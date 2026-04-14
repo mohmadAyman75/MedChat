@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/RxChat-شات_الصيدلية-0EA5E9?style=for-the-badge&logoColor=white" />
 
-# 💊 RxChat — شات الصيدلية
+# 💊 MedChat — شات الصيدلية
 
 ### روبوت محادثة ذكي يشتغل زي صيدلاني محترف
 
