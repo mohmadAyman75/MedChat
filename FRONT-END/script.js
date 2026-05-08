@@ -597,3 +597,289 @@ function render() {
   renderTools();
 }
 
+function refreshIcons() {
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function syncChatViewState() {
+  const chat = currentChat();
+  const isEmpty = !chat?.messages?.length;
+
+  els.promptInput.placeholder = isEmpty ? "اكتب اللي حاسس بيه" : "كمل...";
+  els.emptyState.hidden = !isEmpty;
+  els.chatView.classList.toggle("is-empty", isEmpty);
+  els.chatView.classList.remove("has-draft");
+}
+
+function setSendButtonMode(hasPromptText) {
+  const icon = hasPromptText ? "arrow-up" : "audio-lines";
+  if (els.sendButton.dataset.icon === icon) return;
+
+  els.sendButton.dataset.icon = icon;
+  els.sendButton.innerHTML = `<i data-lucide="${icon}"></i>`;
+  els.sendButton.setAttribute("aria-label", hasPromptText ? "إرسال الرسالة" : "إدخال صوتي");
+  els.sendButton.setAttribute("title", hasPromptText ? "إرسال الرسالة" : "إدخال صوتي");
+  refreshIcons();
+}
+
+function syncPromptInput() {
+  setSendButtonMode(els.promptInput.value.trim().length > 0);
+  syncChatViewState();
+  els.promptInput.style.height = "auto";
+  els.promptInput.style.height = `${Math.min(120, els.promptInput.scrollHeight)}px`;
+}
+
+function scrollToBottom() {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      els.messageScroll.scrollTop = els.messageScroll.scrollHeight;
+    });
+  });
+}
+
+function focusPrompt() {
+  window.setTimeout(() => els.promptInput.focus(), 0);
+}
+
+function openDropdown(menu, trigger) {
+  closeDropdowns(menu);
+  menu.classList.toggle("is-open");
+  trigger?.setAttribute("aria-expanded", String(menu.classList.contains("is-open")));
+}
+
+function closeDropdowns(except) {
+  document.querySelectorAll(".dropdown.is-open, .composer-plus-menu.is-open").forEach((menu) => {
+    if (menu !== except) menu.classList.remove("is-open");
+  });
+  document.querySelectorAll("[aria-expanded='true']").forEach((button) => {
+    const targetOpen =
+      button === els.attachButton && els.toolsMenu === except;
+    if (!targetOpen) button.setAttribute("aria-expanded", "false");
+  });
+}
+
+function openSheet(sheet) {
+  closeDropdowns();
+  closeConversationMenu();
+  closeTopChatMenu();
+  sheet.hidden = false;
+}
+
+function closeSheets() {
+  document.querySelectorAll(".sheet").forEach((sheet) => {
+    sheet.hidden = true;
+  });
+}
+
+function openConversationMenu(chatId, trigger) {
+  const chat = state.chats.find((item) => item.id === chatId);
+  if (!chat || !els.conversationMenu) return;
+
+  closeDropdowns();
+  activeConversationMenuChatId = chatId;
+  if (els.menuPinLabel) {
+    els.menuPinLabel.textContent = chat.pinned ? "إلغاء التثبيت" : "تثبيت المحادثة";
+  }
+
+  els.conversationMenu.hidden = false;
+  refreshIcons();
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const menuRect = els.conversationMenu.getBoundingClientRect();
+  const gap = 8;
+  const top = Math.max(
+    gap,
+    Math.min(triggerRect.bottom + gap, window.innerHeight - menuRect.height - gap),
+  );
+  const left = Math.max(
+    gap,
+    Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - gap),
+  );
+
+  els.conversationMenu.style.top = `${top}px`;
+  els.conversationMenu.style.left = `${left}px`;
+}
+
+function closeConversationMenu() {
+  if (!els.conversationMenu) return;
+  els.conversationMenu.hidden = true;
+  activeConversationMenuChatId = null;
+}
+
+function openAnchoredMenu(menu, trigger) {
+  if (!menu || !trigger) return;
+  closeDropdowns();
+  closeConversationMenu();
+  menu.hidden = false;
+  refreshIcons();
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const gap = 8;
+  const top = Math.max(
+    gap,
+    Math.min(triggerRect.bottom + gap, window.innerHeight - menuRect.height - gap),
+  );
+  const left = Math.max(
+    gap,
+    Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - gap),
+  );
+
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+}
+
+function closeTopChatMenu() {
+  if (!els.topChatMenu) return;
+  els.topChatMenu.hidden = true;
+}
+
+function handleConversationMenuAction(action) {
+  const chatId = activeConversationMenuChatId;
+  const chat = state.chats.find((item) => item.id === chatId);
+  if (!chat) return;
+
+  closeConversationMenu();
+
+  if (action === "share") {
+    showToast("المشاركة قريبًا");
+    return;
+  }
+
+  if (action === "group") {
+    showToast("محادثة جماعية قريبًا");
+    return;
+  }
+
+  if (action === "rename") {
+    renameChat(chatId);
+    return;
+  }
+
+  if (action === "pin") {
+    pinChat(chatId);
+    return;
+  }
+
+  if (action === "archive") {
+    showToast("الأرشفة غير مفعلة في النسخة المحلية");
+    return;
+  }
+
+  if (action === "delete" && window.confirm("حذف المحادثة؟")) {
+    deleteChat(chatId);
+  }
+}
+
+function handleTopChatMenuAction(action) {
+  const chat = currentChat();
+  if (!chat) return;
+
+  closeTopChatMenu();
+
+  if (action === "group") {
+    showToast("محادثة جماعية قريبًا");
+    return;
+  }
+
+  if (action === "files") {
+    showToast("عرض الملفات قريبًا");
+    return;
+  }
+
+  if (action === "pin") {
+    pinChat(chat.id);
+    return;
+  }
+
+  if (action === "archive") {
+    showToast("الأرشفة قريبًا");
+    return;
+  }
+
+  if (action === "delete" && window.confirm("حذف المحادثة؟")) {
+    deleteChat(chat.id);
+  }
+}
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.add("is-visible");
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    els.toast.classList.remove("is-visible");
+  }, 1800);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function linkify(value) {
+  return value.replace(
+    /(https?:\/\/[^\s]+)/g,
+    '<a href="$1" target="_blank" rel="noreferrer">$1</a>',
+  );
+}
+
+function formatDate(timestamp) {
+  return new Intl.DateTimeFormat("ar-EG", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function setView(view) {
+  els.chatView.hidden = view !== "chat";
+  document.querySelectorAll(".quick-link").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.view === view);
+  });
+  if (view === "chat") focusPrompt();
+}
+
+function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast("تم النسخ"));
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+  showToast("تم النسخ");
+}
+
+function speakText(text) {
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+    showToast("تشغيل الصوت غير مدعوم في المتصفح");
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ar-EG";
+  utterance.rate = 1;
+  window.speechSynthesis.speak(utterance);
+  showToast("تشغيل الصوت");
+}
+
+function exportChats() {
+  const blob = new Blob([JSON.stringify(state.chats, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "nova-arabic-chats.json";
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("تم تجهيز التصدير");
+}
+
