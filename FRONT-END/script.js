@@ -883,3 +883,327 @@ function exportChats() {
   showToast("تم تجهيز التصدير");
 }
 
+function wireEvents() {
+  els.projectTitleButton.addEventListener("click", () => {
+    if (els.app.dataset.sidebar === "closed") {
+      els.app.dataset.sidebar = "open";
+    }
+  });
+
+  els.sidebarToggle.addEventListener("click", () => {
+    els.app.dataset.sidebar = els.app.dataset.sidebar === "closed" ? "open" : "closed";
+  });
+
+  els.mobileSidebarToggle.addEventListener("click", () => {
+    els.app.dataset.sidebar = "open";
+  });
+
+  els.newChatButton.addEventListener("click", createChat);
+
+  els.searchButton.addEventListener("click", () => {
+    openSheet(els.searchSheet);
+    renderSearchResults();
+    window.setTimeout(() => els.chatSearch.focus(), 0);
+  });
+
+  els.railPinnedButton.addEventListener("click", () => {
+    const pinned = state.chats.find((chat) => chat.pinned);
+    if (!pinned) {
+      showToast("لا توجد محادثات مثبتة");
+      return;
+    }
+    discardTemporaryChats();
+    state.currentChatId = pinned.id;
+    saveState();
+    render();
+  });
+
+  els.railChatButton.addEventListener("click", () => {
+    els.app.dataset.sidebar = "open";
+    setView("chat");
+    focusPrompt();
+  });
+
+  els.chatSearch.addEventListener("input", (event) => {
+    state.search = event.target.value;
+    renderSearchResults();
+  });
+
+  els.searchResults.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-open-search-chat]");
+    if (!button) return;
+    discardTemporaryChats();
+    state.currentChatId = button.dataset.openSearchChat;
+    saveState();
+    setView("chat");
+    render();
+    closeSheets();
+    if (window.matchMedia("(max-width: 860px)").matches) els.app.dataset.sidebar = "closed";
+  });
+
+  els.conversationGroups.addEventListener("click", (event) => {
+    if (event.target.closest("[data-rename-input]")) return;
+
+    const actionButton = event.target.closest("[data-action]");
+    if (actionButton) {
+      event.stopPropagation();
+      const chatId = actionButton.dataset.chatId;
+      const action = actionButton.dataset.action;
+      if (action === "menu") openConversationMenu(chatId, actionButton);
+      return;
+    }
+
+    const chatButton = event.target.closest("[data-chat-id]");
+    if (!chatButton) return;
+    discardTemporaryChats();
+    state.currentChatId = chatButton.dataset.chatId;
+    saveState();
+    setView("chat");
+    render();
+    if (window.matchMedia("(max-width: 860px)").matches) els.app.dataset.sidebar = "closed";
+  });
+
+  els.conversationGroups.addEventListener("input", (event) => {
+    const input = event.target.closest("[data-rename-input]");
+    if (!input) return;
+    const chat = state.chats.find((item) => item.id === input.dataset.renameInput);
+    if (!chat) return;
+    chat.title = input.value.slice(0, 80);
+    chat.updatedAt = Date.now();
+    saveState();
+  });
+
+  els.conversationGroups.addEventListener("keydown", (event) => {
+    const input = event.target.closest("[data-rename-input]");
+    if (!input) return;
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finishInlineRename();
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      finishInlineRename({ revert: true });
+    }
+  });
+
+  els.conversationGroups.addEventListener("focusout", (event) => {
+    const input = event.target.closest("[data-rename-input]");
+    if (!input) return;
+    window.setTimeout(() => {
+      if (editingChatId === input.dataset.renameInput) {
+        finishInlineRename();
+      }
+    }, 0);
+  });
+
+  els.conversationMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-menu-action]");
+    if (!button) return;
+    handleConversationMenuAction(button.dataset.menuAction);
+  });
+
+  document.querySelectorAll(".quick-link").forEach((button) => {
+    button.addEventListener("click", () => {
+      setView(button.dataset.view);
+      if (window.matchMedia("(max-width: 860px)").matches) els.app.dataset.sidebar = "closed";
+    });
+  });
+
+  els.attachButton.addEventListener("click", () => openDropdown(els.toolsMenu, els.attachButton));
+  els.temporaryChatButton.addEventListener("click", makeTemporaryChat);
+  els.topChatMenuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openAnchoredMenu(els.topChatMenu, els.topChatMenuButton);
+  });
+
+  els.topChatMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-top-menu-action]");
+    if (!button) return;
+    handleTopChatMenuAction(button.dataset.topMenuAction);
+  });
+
+  els.toolsMenu.addEventListener("click", (event) => {
+    const plusButton = event.target.closest("[data-plus-action]");
+    if (plusButton) {
+      const action = plusButton.dataset.plusAction;
+      closeDropdowns();
+
+      if (action === "attach") {
+        els.fileInput.click();
+        return;
+      }
+
+      const messages = {
+        recent: "Recent files قريبًا",
+        image: "Create image قريبًا",
+        research: "Deep research قريبًا",
+        web: "Web search قريبًا",
+        more: "More قريبًا",
+        projects: "Projects قريبًا",
+      };
+      showToast(messages[action] || "قريبًا");
+      return;
+    }
+
+    const button = event.target.closest("[data-tool]");
+    if (!button) return;
+    const tool = button.dataset.tool;
+    if (state.tools.has(tool)) state.tools.delete(tool);
+    else state.tools.add(tool);
+    saveState();
+    renderTools();
+  });
+
+  els.promptInput.addEventListener("input", syncPromptInput);
+  els.promptInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submitPrompt();
+    }
+  });
+
+  els.composer.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitPrompt();
+  });
+
+  els.suggestionGrid.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-prompt]");
+    if (button) submitPrompt(button.dataset.prompt);
+  });
+
+  els.fileInput.addEventListener("change", () => {
+    state.attachments = [...state.attachments, ...Array.from(els.fileInput.files)];
+    els.fileInput.value = "";
+    renderAttachments();
+    showToast("تم إرفاق الملفات");
+  });
+
+  els.attachmentRow.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-attachment]");
+    if (!button) return;
+    state.attachments.splice(Number(button.dataset.removeAttachment), 1);
+    renderAttachments();
+  });
+
+  els.messages.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-message-action]");
+    if (!button) return;
+    const messageEl = event.target.closest("[data-message-id]");
+    const chat = currentChat();
+    const message = chat?.messages.find((item) => item.id === messageEl.dataset.messageId);
+    if (!message) return;
+
+    const action = button.dataset.messageAction;
+    if (action === "copy") copyText(message.content);
+    if (action === "speak") speakText(message.content);
+    if (action === "edit") {
+      els.promptInput.value = message.content;
+      syncPromptInput();
+      focusPrompt();
+    }
+    if (action === "retry") {
+      if (message.role === "assistant") {
+        const previousUser = [...chat.messages]
+          .slice(0, chat.messages.indexOf(message))
+          .reverse()
+          .find((item) => item.role === "user");
+        if (previousUser) simulateAssistant(previousUser.content);
+      } else {
+        simulateAssistant(message.content);
+      }
+    }
+  });
+
+  els.profileButton.addEventListener("click", () => openSheet(els.profileSheet));
+  els.themeButton.addEventListener("click", () => {
+    state.settings.theme = state.settings.theme === "dark" ? "light" : "dark";
+    saveState();
+    renderSettings();
+    showToast("تم تغيير الثيم");
+  });
+  els.clearButton.addEventListener("click", () => {
+    if (!window.confirm("مسح كل المحادثات؟")) return;
+    state.chats = [];
+    createChat();
+    closeSheets();
+  });
+  els.exportButton.addEventListener("click", exportChats);
+
+  els.compactToggle.addEventListener("change", () => {
+    state.settings.compact = els.compactToggle.checked;
+    saveState();
+    renderSettings();
+  });
+  els.titleToggle.addEventListener("change", () => {
+    state.settings.autoTitle = els.titleToggle.checked;
+    saveState();
+  });
+  els.toneSelect.addEventListener("change", () => {
+    state.settings.tone = els.toneSelect.value;
+    saveState();
+  });
+
+  els.micButton.addEventListener("click", () => {
+    showToast("الإدخال الصوتي جاهز كمكان مخصص");
+  });
+
+  els.shareButton.addEventListener("click", () => {
+    const chat = currentChat();
+    if (!chat || chat.temporary) {
+      showToast("المشاركة غير متاحة للمحادثات المؤقتة");
+      return;
+    }
+    copyText(JSON.stringify(chat, null, 2));
+    showToast("تم نسخ بيانات المحادثة");
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".composer-plus-wrap")) {
+      closeDropdowns();
+    }
+    if (!event.target.closest(".conversation-menu") && !event.target.closest("[data-action='menu']")) {
+      closeConversationMenu();
+    }
+    if (!event.target.closest("#topChatMenu") && !event.target.closest("#topChatMenuButton")) {
+      closeTopChatMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeDropdowns();
+      closeConversationMenu();
+      closeTopChatMenu();
+      closeSheets();
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      openSheet(els.searchSheet);
+      renderSearchResults();
+      window.setTimeout(() => els.chatSearch.focus(), 0);
+    }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "o") {
+      event.preventDefault();
+      createChat();
+    }
+  });
+
+  document.querySelectorAll("[data-close-sheet]").forEach((button) => {
+    button.addEventListener("click", closeSheets);
+  });
+
+  document.querySelectorAll(".sheet").forEach((sheet) => {
+    sheet.addEventListener("click", (event) => {
+      if (event.target === sheet) closeSheets();
+    });
+  });
+}
+
+loadState();
+wireEvents();
+render();
+syncPromptInput();
+refreshIcons();
